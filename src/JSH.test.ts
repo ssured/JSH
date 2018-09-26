@@ -1,4 +1,4 @@
-import { Morph, Hash, UnMorph } from "./JSH";
+import { Morph, Hash, UnMorph, ReadHashes } from "./JSH";
 
 describe("JSH", () => {
   test("serialization of primitives", () => {
@@ -117,11 +117,48 @@ describe("JSH", () => {
   });
 });
 
+// console.log(
+//   JSON.stringify(
+//     Morph({
+//       a: { b: "b", c: [{ d: "d" }] }
+//     }),
+//     null,
+//     2
+//   )
+// );
+
+const AddHashes = (
+  rainbow?: Map<string, NotUndefined>,
+  obj: MorphedValue
+): void => {
+  const hashes = ReadHashes(obj);
+  Object.keys(hashes)
+    .filter(hash => !rainbow.has(hash))
+    .forEach((hash, i) => {
+      const hint = hashes[hash];
+
+      if (Array.isArray(hint)) {
+        rainbow.set(hash, hint.map(item => UnMorph(item, rainbow)));
+      } else {
+        rainbow.set(
+          hash,
+          Object.keys(hint).reduce((map, key) => {
+            map[key] = UnMorph(hint[key], rainbow);
+            return map;
+          }, {})
+        );
+      }
+    });
+};
+
 console.log(
   JSON.stringify(
-    Morph({
-      a: { b: "b" }
-    }),
+    AddHashes(
+      new Map(),
+      Morph({
+        a: { b: "b", c: [{ d: "d" }] }
+      })
+    ),
     null,
     2
   )

@@ -1,53 +1,12 @@
 import { stringify } from "./stringify";
 import * as sha1 from "sha1";
 
-// const MAX_INT_HEX_LENGTH = Math.floor(
-//   Math.log2(Number.MAX_SAFE_INTEGER) / Math.log2(16)
-// );
-
 const Lex = stringify;
-
-// const rainbowTable: { [key: string]: {} | null } = {};
-
-// const Tell = (hash: string, v: any): void => (rainbowTable[hash] = v);
-// const Ask = (hash: string): any => rainbowTable[hash];
 
 export const Hash = (v: {} | null): string => {
   const hash = sha1(Lex(v)) as string;
   return hash; // parseInt(hash.substr(0, MAX_INT_HEX_LENGTH), 16);
 };
-
-// const MorphValue = (v: string | number | boolean | object | null): any => {
-//   if (typeof v === "object") {
-//     if (v == null) return [null];
-//     if (Array.isArray(v)) {
-//       const morphedArray = v.map(i => MorphValue(i));
-//       const hashedArray = Hash(morphedArray);
-//       const didKnow = !!Ask(hashedArray);
-//       if (didKnow) {
-//         return [null, null, hashedArray];
-//       } else {
-//         Tell(hashedArray, morphedArray);
-//         return [morphedArray, null, hashedArray];
-//       }
-//     }
-
-//     const morphedObject = Object.keys(v).reduce((map, key) => {
-//       map[key] = MorphValue(v[key]);
-//       return map;
-//     }, {});
-//     const hashedObject = Hash(morphedObject);
-//     const didKnow = !!Ask(hashedObject);
-//     if (didKnow) {
-//       return [null, hashedObject];
-//     } else {
-//       Tell(hashedObject, morphedObject);
-//       return [morphedObject, Hash(morphedObject)];
-//     }
-//   }
-
-//   return [v];
-// };
 
 type NotUndefined = string | number | boolean | object | null;
 
@@ -75,7 +34,7 @@ export const Morph = (
       return map;
     }, {});
   };
-  const HashObject = (morphed: MorphedObject) =>
+  const HashMorphedObject = (morphed: MorphedObject) =>
     Hash(
       Object.keys(morphed).reduce((map, key) => {
         map[key] = [...morphed[key]];
@@ -95,7 +54,7 @@ export const Morph = (
       return value;
     });
   };
-  const HashArray = (arr: MorphedArray) =>
+  const HashMorphedArray = (arr: MorphedArray) =>
     Hash(
       arr.map(morphed => {
         const value = [...morphed];
@@ -109,11 +68,16 @@ export const Morph = (
 
     if (Array.isArray(value)) {
       const morphedArray = MorphArray(value);
-      return [morphedArray, null, HashArray(morphedArray)];
+      const morphedArrayHash = HashMorphedArray(morphedArray);
+      return [
+        rainbow && rainbow.has(morphedArrayHash) ? null : morphedArray,
+        null,
+        morphedArrayHash
+      ];
     }
 
     const morphedObject = MorphObject(value);
-    const morphedObjectHash = HashObject(morphedObject);
+    const morphedObjectHash = HashMorphedObject(morphedObject);
 
     return [
       rainbow && rainbow.has(morphedObjectHash) ? null : morphedObject,
@@ -136,76 +100,68 @@ export const UnMorph = (
     return morphed[0];
   } else if (morphed.length === 2) {
     const [primitive, objectHash] = morphed;
+    if (rainbow && rainbow.has(objectHash)) {
+      return rainbow.get(objectHash)!;
+    }
     if (primitive) {
-      if (typeof primitive !== "object") throw new Error("Formatting is wrong");
       const object = primitive as MorphedObject;
       return Object.keys(object).reduce((map, key) => {
         map[key] = UnMorph(object[key]);
         return map;
       }, {});
     }
-    if (rainbow && rainbow.has(objectHash)) {
-      return rainbow.get(objectHash)!;
-    }
     throw new Error(`Cannot unmorph object, ${objectHash} is unknown`);
   } else if (morphed.length === 3) {
     const [primitive, , arrayHash] = morphed;
-    if (primitive) {
-      return (primitive as MorphedValue[]).map(v => UnMorph(v, rainbow));
-    }
     if (rainbow && rainbow.has(arrayHash)) {
       return rainbow.get(arrayHash)!;
+    }
+    if (primitive) {
+      return (primitive as MorphedValue[]).map(v => UnMorph(v, rainbow));
     }
     throw new Error(`Cannot unmorph array, ${arrayHash} is unknown`);
   }
   return assertNever(morphed);
 };
 
-// const MorphObject = (v: object): any => {
-//   const result = Object.entries(v).reduce((map, [key, value]) => {
-//     map[key] = MorphValue(value);
-//     return map;
-//   }, {});
-//   Hash(result);
-//   return result;
-// };
+export const ReadHashes = (obj: MorphedValue): {} => {
+  if (obj.length === 3) {
+    const [hint, , hash] = obj;
+    return hint
+      ? hint.reduce(
+          (map, item) => ({
+            ...ReadHashes(item),
+            ...map
+          }),
+          {
+            [hash]: hint
+          }
+        )
+      : {};
+  } else if (obj.length === 2) {
+    const [hint, hash] = obj;
+    return hint
+      ? Object.keys(hint).reduce(
+          (map, key) => ({
+            ...ReadHashes(hint[key]),
+            ...map
+          }),
+          {
+            [hash]: hint
+          }
+        )
+      : {};
+  } else {
+    return {};
+  }
+};
 
-// const UnMorphObject = (v: object): any => {
-//   return Object.entries(v).reduce((map, [key, value]) => {
-//     const [primitive, object, array] = value;
-//     map[key] = array
-//       ? [...Object.values(UnMorphObject(Ask(array)))]
-//       : object
-//         ? UnMorphObject(Ask(object))
-//         : primitive;
-//     return map;
-//   }, {});
-// };
-
-// // const value1 = { hello: ["world", 0], a: "b" };
-// // const value3 = { a: "b", hello: ["world", 0] };
-// // const value2 = { a: "b", hello: [0, "world"] };
-// // console.log("Hash", value1, Hash(value1));
-// // console.log("Hash", value2, Hash(value2));
-// // console.log("Hash", value3, Hash(value3));
-
-// const v = { hello: ["world", 0, { t: "tst" }], a: { b: "bst" }, c: "cst" };
-// const morphed = MorphObject(v);
-// const unmorphed = UnMorphObject(morphed);
-// console.log(v === unmorphed, Lex(v) === Lex(unmorphed));
-
-// console.log("Morph", JSON.stringify(morphed, null, 2));
-// // console.log("UnMorph", JSON.stringify(unmorphed, null, 2));
-
-// const v2 = {
-//   hello: ["world", 0, { t: "tst" }],
-//   a: { b: "bst", c: { d: 'DDD"' } },
-//   c: "cst"
-// };
-// const morphed2 = MorphObject(v2);
-// console.log("Morph2", JSON.stringify(morphed2, null, 2));
-
-// // console.log("Morph", JSON.stringify(Hash(v.hello), null, 2));
-// // console.log("Morph", JSON.stringify(Hash(v.a), null, 2));
-
-// console.log(JSON.stringify(rainbowTable, null, 2));
+export const AddHashes = (
+  rainbow?: Map<string, NotUndefined>,
+  obj: MorphedValue
+): void => {
+  for ([key, value] of ReadHashes(obj)) {
+    console.log(key, UnMorph(value, rainbow));
+    rainbow.add(key, UnMorph(value, rainbow));
+  }
+};
